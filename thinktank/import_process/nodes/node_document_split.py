@@ -177,7 +177,9 @@ class NodeDocumentSplit(NodeBase):
         #     f.write(json_format(final_chunk_list))
 
         # 1.4 返回即可
-        return final_chunk_list
+        return {
+            "chunks":final_chunk_list
+        }
 
 if __name__ == "__main__":
     node = NodeDocumentSplit()

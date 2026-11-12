@@ -31,3 +31,14 @@ class EmbeddingConfig:
     bge_device=os.getenv("BGE_DEVICE","1")
     # 进行特殊处理
     bge_fp16=os.getenv("BGE_FP16") in ("1","True","true",1)
+
+
+class MilvusConfig:
+    milvus_url = os.getenv("MILVUS_URL","http://192.168.77.77:19530")
+    chunks_collection = os.getenv("CHUNKS_COLLECTION","kb_chunks")
+    item_name_collection = os.getenv("ITEM_NAME_COLLECTION","kb_item_names")
+
+# atguigu/config/config.py
+class MongoConfig:
+    mongo_url=os.getenv("MONGO_URL")
+    mongo_db_name=os.getenv("MONGO_DB_NAME","kb_message")
