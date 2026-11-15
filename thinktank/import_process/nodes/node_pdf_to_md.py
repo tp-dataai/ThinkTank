@@ -22,7 +22,7 @@ class NodePDFToMD(NodeBase):
         local_dir_obj, pdf_path, pdf_path_obj = self.check_pdf_file(state)
 
         # 2、将文件上传到 Mineru ，就是发送http请求
-        batch_id = self.upload_pdf_file(pdf_path,pdf_path_obj)
+        batch_id = self.upload_pdf_file(pdf_path, pdf_path_obj)
         
         # 3、轮询获取 mineru 解析的 md 的压缩包 url 地址
         url = self.get_md_zip_url(batch_id)
@@ -43,6 +43,8 @@ class NodePDFToMD(NodeBase):
         }
 
     def check_pdf_file(self,state):
+
+        # 获取到文件的地址
         local_dir = state.get("local_dir")
         pdf_path = state.get("pdf_path")
 
@@ -59,16 +61,19 @@ class NodePDFToMD(NodeBase):
             logger.error("输出目录路径不能为空")
             raise ValueError("输出目录路径不能为空")
 
+        # 根据目录路径得到一个 本地目录对象。
         local_dir_obj = Path(local_dir)
         if not local_dir_obj.exists():
-            # parents=True代表创建的时候递归创建 exist_ok=True即使存在也不报错
+            # parents=True 代表创建的时候递归创建 exist_ok=True 即使存在也不报错
             local_dir_obj.mkdir(parents=True, exist_ok=True)
+
         return local_dir_obj, pdf_path, pdf_path_obj
 
     # 当下这个代码还是存在一些问题。
     # 特别是对于多文件的内容，以及多文件上传的对应问题。
 
     def upload_pdf_file(self, pdf_path, pdf_path_obj):
+
         import requests  # 发请求的工具库
         token = MineruConfig.mineru_token
         url = "https://mineru.net/api/v4/file-urls/batch"
@@ -84,7 +89,7 @@ class NodePDFToMD(NodeBase):
             "model_version": "vlm"
         }
 
-        file_path = [pdf_path]   # 多个pdf的存储路径
+        file_path = [pdf_path]   # 多个 pdf 的存储路径
 
         # 发送http请求，获取响应
         response = requests.post(url, headers=header, json=data)
@@ -110,14 +115,14 @@ class NodePDFToMD(NodeBase):
             适用于通过 API 批量创建提取任务的场景 注意：
             单次申请链接不能超过 50 个
             文件大小不能超过 200MB,文件页数不超出 200 页
-            因网络限制，github、aws 等国外 URL 会请求超时
+            因网络限制,github、aws 等国外 URL 会请求超时
             header头中需要包含 Authorization 字段，格式为 Bearer + 空格 + Token
         存在的问题：
-            (2)、data_id的赋值问题。对于多文件处理的情况下。应该如何去更改？
+            (2)、data_id 的赋值问题。对于多文件处理的情况下。应该如何去更改？
             (3)、
         """
-        urls = result["data"]["file_urls"]   # 文件上传地址
-        for i in range(0, len(urls)):  # 文件上传地址的数量
+        urls = result["data"]["file_urls"]        # 文件上传地址
+        for i in range(0, len(urls)):             # 文件上传地址的数量
             with open(file_path[i], 'rb') as f:   # 'rb':只能写 bytes
                 res_upload = requests.put(urls[i], data=f)
                 if res_upload.status_code == 200:

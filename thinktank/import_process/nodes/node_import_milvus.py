@@ -31,12 +31,12 @@ class NodeImportMilvus(NodeBase):
         if not file_title:
             logger.error("file_title 不能为空")
             raise Exception("file_title 不能为空")
+        
         # 3、创建一个 Milvus 客户端的内容 并通过配置文件获得 Milvus 中的collection 的名称。
         milvus_client = get_milvus_client()
         collection_name = MilvusConfig.chunks_collection
 
         # 4、先通过 has_collection() 去判断是否存在collection ，如果不存在的话
-        
         # print("02 chunks获取成功，开始创建collection等内容")
 
         if not milvus_client.has_collection(collection_name=collection_name):

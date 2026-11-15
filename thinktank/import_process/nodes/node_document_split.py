@@ -37,7 +37,7 @@ class NodeDocumentSplit(NodeBase):
         # 1、获取测试给的 md 内容集文件标题，内容需要进行换行符统一。
         file_title, md_content = self.get_md_content(state)
 
-        # 2、粗切  根据每行是不是标题来进行粗切，以标题和它所属内容组成大块
+        # 2、粗切  根据每行是不是标题来进行粗切，以标题和它所属内容组成大块。
         section_list = self.get_section_list(md_content,file_title)
 
         # 3、细切（长切短合）遍历上面粗切出来的每个大块进行判断长切短合。
@@ -147,7 +147,7 @@ class NodeDocumentSplit(NodeBase):
             # 获取真实的文本内容
             real_content = content[len(title) + 2 :] if content.startswith("#") else content
 
-            # 长度小于 300的不切
+            # 长度小于 300 的不切
             if len(real_content) <= 300:
                 final_chunk_list.append({
                     **section,

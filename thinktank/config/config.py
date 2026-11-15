@@ -42,3 +42,13 @@ class MilvusConfig:
 class MongoConfig:
     mongo_url=os.getenv("MONGO_URL")
     mongo_db_name=os.getenv("MONGO_DB_NAME","kb_message")
+
+
+class MCPConfig:
+    mcp_dashscope_base_url = os.getenv("MCP_DASHSCOPE_BASE_URL")
+    mcp_dashscope_api_key = os.getenv("MCP_DASHSCOPE_API_KEY")
+
+
+class RerankConfig:
+    rerank_work_space = os.getenv("RERANK_WORK_SPACE")
+    rerank_api_key = os.getenv("RERANK_API_KEY")

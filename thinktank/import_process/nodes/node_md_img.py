@@ -81,7 +81,7 @@ class NodeMDImg(NodeBase):
                 "md_content":md_content
             }
 
-        return image_dir_path_obj,image_names, md_content,md_path_obj
+        return image_dir_path_obj, image_names, md_content, md_path_obj
 
     def get_image_with_context_list(self, image_dir_path_obj, image_names, md_content):
         # 文件不一定都是图片，我们需要先确定 图片类型的数据，其后缀有哪些？
@@ -261,7 +261,9 @@ class NodeMDImg(NodeBase):
             })
 
         return image_with_summary_url_list
+    
     def replace_md_content(self, image_with_summary_url_list, md_content, md_path_obj):
+        
         # 5.1 先替换内容
         for image_with_summary_url in image_with_summary_url_list:
             pattern = re.compile(r"!\[.*?\]\(.*?" + re.escape(image_with_summary_url["image_name"]) + r"\)")

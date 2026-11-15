@@ -22,7 +22,7 @@ class NodeBGEEmbedding(NodeBase):
             raise Exception("chunks 的内容不能为空")
 
         # 进行已处理，将数据进行嵌入向量，并返回到我们的 chunks 中，用于后续 写入到 Milvus 中
-        # 3 个为一批
+        # 3 个为一批 --> 按批进行向量化处理
         for i in range(0,len(chunks),3):
             # 这是将里字典列表中的数据每个拿3个出来
             chunks_k_list = chunks[i : i + 3]

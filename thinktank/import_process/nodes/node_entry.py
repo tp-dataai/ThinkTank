@@ -22,7 +22,7 @@ class NodeEntry(NodeBase):
 
         local_file_path_obj = Path(local_file_path)
 
-        if not local_file_path_obj.exists:
+        if not local_file_path_obj.exists():
             logger.error("上传文件不能不存在")
             raise Exception("上传文件不能不存在")
         
@@ -30,7 +30,7 @@ class NodeEntry(NodeBase):
 
         file_name = local_file_path_obj.name
         file_title = local_file_path_obj.stem
-        file_suffix = local_file_path_obj.suffix  # 得到文件的后缀
+        file_suffix = local_file_path_obj.suffix.lower()  # 得到文件的后缀
 
         # 4、基于提取的 文件 后缀来进行判断。并返回不同的值
         #    返回的值 有 file_title、流程控制标记、以及 md_path(放在本地路径中)
@@ -62,6 +62,6 @@ if __name__ == "__main__":
    # 初始数据
    init_state = {
        "local_dir":r"C:\Users\Administrator\Desktop\test1",
-       "local_file_path":r"C:\Users\Administrator\Desktop\test1\hak180产品安全手册.pdf"
+       "local_file_path":r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用.pdf"
    }
    result = node_entry(init_state)
