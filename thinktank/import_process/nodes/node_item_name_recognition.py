@@ -19,22 +19,33 @@ from thinktank.tool.bgem3_embedding_tool import get_bgem3_embeddings
 class NodeItemNameRecognition(NodeBase):
     """
     主体识别：主体识别与标签提取
+    具体的实现步骤如下：
+        (1) 获取输入: 校验 State 中的 file_title 和 chunks。
+        (2) 构建上下文: 截取前 K 个切片作为 LLM 的识别素材。
+        (3) 调用 LLM: 使用大模型识别商品名称，包含错误重试与兜底。
+        (4) 创建 collection: 书写 milvus 客户端初始化工具根据配置创建对应的 collection
+              -> 1、创建结构  
+              -> 2、创建索引
+              -> 3、创建表(创建表之前判断表在不在)
+        (5) 插入数据: 把生成的 item_name 进行向量化，构建数据字典插入到 milvus 数据库
+        (6) 回填数据 item_name 到 chunk:在 process 当中返回数据前，
+            要把 item_name 给添加到每个 chunk 当中。
     """
 
     name = "node_item_name_recognition"
 
     def process(self, state: ImportGraphState):
-
+        # 整个代码的思路上来看，当下代码的思路是一个文件识别出一个实体。
         # 1、获取切分 好的 chunks 和 文件名称
         file_title, chunks = self.get_split_chunks(state)
 
-        # 2、将 chunks的前10个内容提取出来进行拼接处理
+        # 2、将 chunks 的前10个内容提取出来进行拼接处理
         chunk_k_str = self.get_chunks_str(file_title, chunks)
 
         # 3、初始化大模型，对 chunk_k_str 进行总结，识别出来我们的主体名（商品名）
         item_name = self.get_item_name(file_title,chunk_k_str)
 
-        # 4、创建向量数据库的表，后期需要将大模型识别出来的主体存储在 Milvus 中。
+        # 4、创建向量数据库的表，用于存储主体名称
         collection_name, milvus_client = self.create_milvus_collection()
 
         # 5、将识别出来的内容插入到 Milvus 中。
@@ -42,6 +53,7 @@ class NodeItemNameRecognition(NodeBase):
 
         # 6、将识别出来的 主体名返回到 chunks 中，增强 chunks 的内容。
         self.back_item_name_to_chunk(file_title_id,chunks,item_name)
+        
         # 7、最后需要返回 增强后的 chunks 和 item_name (主体名)
         return {
             "chunks":chunks,
@@ -62,7 +74,9 @@ class NodeItemNameRecognition(NodeBase):
             raise ValueError("file_title 不能为空")
         
         return file_title, chunks
-    
+
+    # 与其在这拼接的话，为什么不直接拿 md_content 的内容截取呢，其实差不多。
+    # 下面内容的必要性，有待考虑
     def get_chunks_str(self, file_title, chunks):
         # 进行主体内容识别。
         #   2.1、先在 chunks列表中提取出前 10 个元素的内容  
@@ -80,6 +94,7 @@ class NodeItemNameRecognition(NodeBase):
             content = chunk.get("content")
             chunk_content = f"[切片:{idx}]\n[标题:{title}]\n[文件名:{file_title}]\n[内容:{content}]\n\n"
             chunks_k_str += chunk_content
+
             if len(chunks_k_str) >= 10000:
                 break
 
@@ -110,11 +125,12 @@ class NodeItemNameRecognition(NodeBase):
         return item_name
 
     def create_milvus_collection(self):
+
         #   4.1、初始化一个 Minlvus 客户端
         milvus_client = get_milvus_client()
         collection_name = MilvusConfig.item_name_collection
 
-        #   4.2、创建结构、创建索引（稠密向量和稀疏向量索引）、创建表
+        # 4.2、创建结构、创建索引（稠密向量和稀疏向量索引）、创建表
         if not milvus_client.has_collection(collection_name):
             # 创建表：1、创建结构  2、创建索引  3、创建表（创建表之前判断表在不在）
             schema = milvus_client.create_schema(
@@ -180,15 +196,18 @@ class NodeItemNameRecognition(NodeBase):
                 index_params=index_params,
             )
 
-            # print("collection_name=",collection_name)
-            # print("milvus_client=",milvus_client)
         #   4.3、返回一个 表 和 Milvus 客户端
         return collection_name, milvus_client
 
     def insert_item_name(self, item_name, collection_name, milvus_client, file_title):
         #   5.1、先将识别出来的主体名进行向量化。
+        # 如果说主体识别的过程中可以识别出多个 主体的或者标签的情况下，
+        # 这个地方不能使用 file_title_id进行md5
         file_title_id = hashlib.md5(file_title.encode('utf-8')).hexdigest()
+
+        # 调用 bge-m3来完成主体内容的向量化
         item_name_vector = get_bgem3_embeddings([item_name])
+
         dense_vector = item_name_vector["dense"][0]
         sparse_vector = item_name_vector["sparse"][0]
         create_date = str(datetime.now())
@@ -232,15 +251,15 @@ class NodeItemNameRecognition(NodeBase):
             chunk["item_name"] = item_name
             chunk["file_title_id"]=file_title_id  # 这个id 是根据 file_title 获得的id，主要用于后续的 幂等性删除
         
-        # # 再去备份回填完的chunks到json文件
-        # with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\final_spilt_list_new.json", "w", encoding="utf-8") as f:
+        # # 再去备份回填完的 chunks 到 json 文件
+        # with open(r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\final_spilt_list_item_name.json", "w", encoding="utf-8") as f:
         #     # json.dump(chunks, f, ensure_ascii=False, indent=4)
         #     f.write(json_format(chunks))    
 
 if __name__ == "__main__":
 
     item_name = NodeItemNameRecognition()
-    with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\final_spilt_list.json", "r", encoding="utf-8") as f:
+    with open(r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\final_spilt_list.json", "r", encoding="utf-8") as f:
         chunks = json.load(f)
         
     init_stata = {

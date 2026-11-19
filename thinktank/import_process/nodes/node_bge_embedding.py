@@ -8,7 +8,12 @@ from thinktank.tool.json_format import json_format
 
 class NodeBGEEmbedding(NodeBase):
     """
-    混合向量化节点：使用 BGE-M3 模型将文本转换为向量
+    混合向量化节点：使用 BGE-M3 模型将文本转换为向量。
+    向量化的步骤：
+    (1) 获取数据: 获取到需要进行向量化处理的数据, 也就是我们之前处理好的Chunk内容。
+    (2) 批次处理: 按照3个一批的数据, 输入到大模型中进行向量化处理。
+    (3) 数据回填: 将模型返回的 稠密向量和稀疏向量，回填到原始Chunk 中。
+       -> 2和3, 通过两个for循环来完成处理。
     """
 
     name = "node_bge_embedding"
@@ -36,7 +41,7 @@ class NodeBGEEmbedding(NodeBase):
                 chunk["dense_vector"] = embedding["dense"][idx]
                 chunk["sparse_vector"] = embedding["sparse"][idx]
 
-        # with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\cunks_vector.json","w",encoding="utf-8") as f:
+        # with open(r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\final_spilt_list_item_name_cunks_vector.json","w",encoding="utf-8") as f:
         #     json.dump(chunks,f,ensure_ascii=False,indent=4)
 
         return {
@@ -47,12 +52,12 @@ if __name__ == "__main__":
 
     node = NodeBGEEmbedding()
 
-    with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\final_spilt_list_new.json","r",encoding="utf-8") as f:
+    with open(r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\final_spilt_list_item_name.json","r",encoding="utf-8") as f:
         chunks = json.load(f)
 
     init_state = {
         "chunks":chunks
     }
-
+    
     result = node(init_state)
-    print("result=", json_format(result))
+    # print("result=", json_format(result))

@@ -8,26 +8,34 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class NodeDocumentSplit(NodeBase):
     """
-    文档内容切分：
+    文档内容切分：将长文档转换为适合向量检索的微观语义单元(Chunk)。采用“先按标题切分，再按长度优化”的策略。
     主要涉及的三个大的步骤：
-    1、先拿到 md 的文档内容
-        (1) 通过state拿到 文档的 md_path 和 file_title
-        (2) 判断 md_path 的目录和文件路径是否存在。
-        (3) 判断 标题是否为空
-        (4) 最后需要读取文件内容并对里面的内容进行一定的替换，
-            将 文本中 换行符替换成一致的内容。方便后面使用。
-    2、进行粗分
-        (1) 先按照 换行符将 整篇文档处理成列表。
-        (2) 遍历列表中的每一个内容进行处理，先处理代码围栏的问题，因为代码中存在 #。
-            通过状态机 和 检查标志以及正则匹配来完成这些内容。
-        (3) 循环拼接，找到 # ，然后将#号之前的内容进行切片处理。得到一个列表。
-        (4) 将列表的内容 拼接起来，最后返回一个字典列表数据。
-    3、进行细切
-        (1) 定义递归列表切分器。
-        (2) 循环遍历每个字典中的内容，并将content提取出来。
-            2.1 、然后判断 content 的长度和是否存在表格，因为这些内容都不行切分。
-            2.2 、使用 递归字符切分器进行切分。并完成字典列表数据的处理。
-        (4) 最后 将其添加到最终的字典列表中。
+    (1) 数据获取: 从上一个节点拿到 md_path 得到文件内容及 state 得到 file_title,
+        进行防护校验并对内容换行统一操作
+    (2) 标题粗切：把内容按照 \n 切成行列表，遍历行列表：每个行去除两边空格，进行按照标题合并片段
+        这部分的核心难点就在于代码围栏的匹配问题：
+        -> 第一步：先将这个文档，按照行切分成一个大的列表，每个元素代码一行数据。
+        -> 第二步：开始循环判断每行数据的内容。
+        -> 第三步：在循环过程中进行代码围栏的判断,通过正则来匹配 # 是否是代码围栏中的内容，如果是那是第几次匹配到的内容 。
+                  如果是第一次匹配到，那么我们就将匹配的表示 更改为True，如果是第二次就将其更改为False，通过这样的方式来完成代码围栏的问题处理。
+            # 先做 代码围栏 处理
+            match = re.match(code_pattern,splite_line)
+            if match:
+                # 表示是第一次匹配到
+                if not is_block:
+                    is_block = True  # 替换成 True 表示是第一次匹配到。
+                    marker = match.group(1)
+                else:
+                    if marker == match.group(1):
+                        # 代码围栏结束
+                        is_block = False
+                        marker = None
+            # 如果 是 True 并且 这是以 # 号开头（不管有多少个#号）  
+        -> 第四步：通过找后切前的思路完成内容切分，这得到的是一个二维列表。
+        -> 第五步：最后合并成一个列表输出。
+    (3) 长度细切：通过 递归字符切分器(RecursiveCharacterTextSplitter) 完成长切短合。
+        -> 第一步：循环遍历每个元素的内容。
+        -> 第二步：根据切分的要求，来进行判断，是否需要切分，小于切分要求的不切，存在表格的不切。
     """
 
     name = "node_document_split"
@@ -37,7 +45,7 @@ class NodeDocumentSplit(NodeBase):
         # 1、获取测试给的 md 内容集文件标题，内容需要进行换行符统一。
         file_title, md_content = self.get_md_content(state)
 
-        # 2、粗切  根据每行是不是标题来进行粗切，以标题和它所属内容组成大块。
+        # 2、粗切：根据每行是不是标题来进行粗切，以标题和它所属内容组成大块。
         section_list = self.get_section_list(md_content,file_title)
 
         # 3、细切（长切短合）遍历上面粗切出来的每个大块进行判断长切短合。
@@ -47,6 +55,7 @@ class NodeDocumentSplit(NodeBase):
 
     # 先获取到md 的数据，然后对md 的数据进行处理。
     def get_md_content(self,state):
+
         file_title = state.get("file_title")
         md_path = state.get("md_path")
 
@@ -89,6 +98,7 @@ class NodeDocumentSplit(NodeBase):
         for idx, splite_line in enumerate(splite_line_list):
             # 将列表中元素的内容左右先建空格处理掉
             splite_line = splite_line.strip()  # 前后的空白全被剃得干干净净）
+
             # 先做 代码围栏 处理
             match = re.match(code_pattern,splite_line)
             if match:
@@ -125,6 +135,7 @@ class NodeDocumentSplit(NodeBase):
         return section_list
 
     def get_final_chunk_list(self,section_list,file_title):
+
         # 1.1 准备递归字符切分器
         spliter = RecursiveCharacterTextSplitter(
             separators=["\n\n", "\n", "。", "！", "？", "；", "!", "?", ";", " "],
@@ -144,7 +155,7 @@ class NodeDocumentSplit(NodeBase):
             title = section.get("title")
             content = section.get("content")
 
-            # 获取真实的文本内容
+            # 获取真实的文本内容,z只要文本，不要标题。
             real_content = content[len(title) + 2 :] if content.startswith("#") else content
 
             # 长度小于 300 的不切
@@ -170,21 +181,25 @@ class NodeDocumentSplit(NodeBase):
                     "content":title + "\n\n" + split_text,
                     "file_title":file_title,
                     "part":idx
-                })                
+                })
+
+        # 问题：上面的代码有没有完成短合的思路，短合应该是两个不同的内容之间，还是怎么样？
+
 
         # # 1.3 保存一份，用于后面节点的测试
-        # with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\final_spilt_list.json", "w",encoding="utf-8") as f:
+        # with open(r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\final_spilt_list.json", "w",encoding="utf-8") as f:
         #     f.write(json_format(final_chunk_list))
 
-        # 1.4 返回即可
+        # 1.4 返回即可,这个数据后期需要进行肢体识别，然后再经混合向量化，最后再进行持久化处理。
         return {
             "chunks":final_chunk_list
         }
 
 if __name__ == "__main__":
     node = NodeDocumentSplit()
+    
     init_state = {
-        "md_path":r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\万用表RS-12的使用_new.md",
+        "md_path":r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\万用表RS-12的使用_new.md",
         "file_title":"万用表RS-12的使用_new"
     }
     result = node(init_state)

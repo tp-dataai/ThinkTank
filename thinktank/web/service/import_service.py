@@ -32,7 +32,6 @@ app.add_middleware(
     allow_headers=["*"],  # 允许的请求头
 )
 
-
 #todo 上传文件的接口
 #后台任务函数
 def run_main_graph(task_id,local_dir,local_file_path):
@@ -58,7 +57,7 @@ def upload(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...,description="上传的文件")
 ):
-    #这个是任务id 是后端在前端第一次发请求的时候造的，返回给前端，作用是后面做节点状态追踪
+    # 这个是任务id 是后端在前端第一次发请求的时候造的，返回给前端，作用是后面做节点状态追踪
     task_id = str(uuid.uuid4()) 
 
     # 开始上传文件
@@ -66,7 +65,7 @@ def upload(
     start_time = time.time()
     
     #暂存
-    file_dir_obj = Path(rf"C:\Users\Administrator\Desktop\test1\{datetime.now().strftime('%Y%m%d')}")
+    file_dir_obj = Path(rf"C:\Users\Administrator\Desktop\育儿\{datetime.now().strftime('%Y%m%d')}")
     if not file_dir_obj.exists():
         file_dir_obj.mkdir(parents=True,exist_ok=True)
 

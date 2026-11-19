@@ -12,6 +12,16 @@ from thinktank.config.config import MineruConfig
 class NodePDFToMD(NodeBase):
     """
     PDF 转 MD 节点
+    核心步骤：
+        (1) 准备数据：我要知道数据在哪 -> 获取 PDF 路径和输出目录。
+        (2) 文档解析
+            -> 请求上传：调用 MinerU 在线 API (/file-urls/batch) 获取上传链接(签名 URL)。
+               如果请求成功的情况下，就会会返回一个 batch_id和 文件在MinerU 中的地址给到我们，同时完成
+               文件的上传工作。
+            -> 轮询结果：循环查询任务状态 (/extract-results/batch/{batch_id}），直到完成。
+            轮询成功后，会返回一个 url 给到我们, 这样我们就可以使用这个url去下载文档解析后的zip文件
+        核心的重点就在于轮询这个内容。
+        (3) 获取结果：下载生成的 ZIP 包，解压并读取 .md 文件内容到 state。
     """
 
     name = "node_pdf_to_md"
@@ -21,7 +31,7 @@ class NodePDFToMD(NodeBase):
         # 1、就是需要从 state 中拿到文件的路径
         local_dir_obj, pdf_path, pdf_path_obj = self.check_pdf_file(state)
 
-        # 2、将文件上传到 Mineru ，就是发送http请求
+        # 2、将文件上传到 Mineru ，就是发送 http 请求
         batch_id = self.upload_pdf_file(pdf_path, pdf_path_obj)
         
         # 3、轮询获取 mineru 解析的 md 的压缩包 url 地址
@@ -36,7 +46,9 @@ class NodePDFToMD(NodeBase):
         # 6、修改 full.md 的名字，保存md 的内容；
         md_content,new_file_path_obj  = self.rename(pdf_path_obj, unzip_file_path_obj)
         print("new_file_path_obj =" ,new_file_path_obj)
-        # 返回值 
+        
+        # 返回值 ,就是会写到 state.py 中的全局变量中。这个会写的动作是在 main_graph.py 中完成，由
+        # LangGraph 自动完成的。
         return {
             "md_path":str(new_file_path_obj),
             "md_content":md_content
@@ -47,12 +59,13 @@ class NodePDFToMD(NodeBase):
         # 获取到文件的地址
         local_dir = state.get("local_dir")
         pdf_path = state.get("pdf_path")
+        pdf_path_obj = Path(pdf_path)
 
+        ## 以下属于防御性判断
         if not pdf_path:
             logger.error("pdf文件路径不能为空")
             raise Exception("pdf文件路径不能为空")
 
-        pdf_path_obj = Path(pdf_path)
         if not pdf_path_obj.exists():
             logger.error("pdf文件不存在")
             raise Exception("pdf文件不存在")
@@ -74,6 +87,7 @@ class NodePDFToMD(NodeBase):
 
     def upload_pdf_file(self, pdf_path, pdf_path_obj):
 
+        ##### 这是发请求的内容
         import requests  # 发请求的工具库
         token = MineruConfig.mineru_token
         url = "https://mineru.net/api/v4/file-urls/batch"
@@ -81,6 +95,9 @@ class NodePDFToMD(NodeBase):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}"
         }
+
+
+        # 返回的结果中不仅仅有batch_id 还有数据在MinerU中的url地址。
         data = {
             "files": [
                 # # data_id 是 MinerU 用来标识每个文件的，后续查询结果时会用到。
@@ -105,7 +122,9 @@ class NodePDFToMD(NodeBase):
 
         # 其实后面我们还得看考虑一层判断，判断数据拿到的是不是我要的数据，这个数据可能是实时数据（随时在变化的数据）
         # 对每个请求都生成一个 batch_id
+
         batch_id = result["data"]["batch_id"]  # 数据对了就去获取数据
+
         # file_urls 不是文件内容，也不是本地路径，而是远程文件的 HTTP(S) 地址。
         # 你拿到它之后，通常要再发一次 HTTP 请求去下载，才能得到真正的文件字节或本地文件。
         # ----------------------------------------------------------------
@@ -119,8 +138,9 @@ class NodePDFToMD(NodeBase):
             header头中需要包含 Authorization 字段，格式为 Bearer + 空格 + Token
         存在的问题：
             (2)、data_id 的赋值问题。对于多文件处理的情况下。应该如何去更改？
-            (3)、
         """
+
+        # 文件上传
         urls = result["data"]["file_urls"]        # 文件上传地址
         for i in range(0, len(urls)):             # 文件上传地址的数量
             with open(file_path[i], 'rb') as f:   # 'rb':只能写 bytes
@@ -130,12 +150,16 @@ class NodePDFToMD(NodeBase):
                 else:
                     logger.warning(f"{urls[i]}上传失败")
         # ----------------------------------------------------------------
-        return batch_id
+        return batch_id   # 这是后面轮询的时候需要的内容
 
     def get_md_zip_url(self, batch_id):
+
+        # 这也是 MinerU提供出来的内容
         import requests
         token = MineruConfig.mineru_token
+        # 这个 链接中包含了我们的 batchd_id 
         api_url = f"https://mineru.net/api/v4/extract-results/batch/{batch_id}"
+        
         header = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}"
@@ -143,7 +167,8 @@ class NodePDFToMD(NodeBase):
 
 
         # 2. 时间控制参数
-        timeout_seconds = 600  # 设定最长等待时间为 10 分钟
+        # 在轮询的过程中做了超时判断，如果超过 5分钟 还没有返回就抛异常
+        timeout_seconds = 600     # 设定最长等待时间为 10 分钟
         start_time = time.time()
         # 3. 开始轮询
         while True:
@@ -152,13 +177,15 @@ class NodePDFToMD(NodeBase):
                 raise TimeoutError(f"MinerU 解析超时（超过 {timeout_seconds} 秒）")
 
             try:
+                # 通过batch_id 去轮询请求。
                 res = requests.get(api_url, headers=header, timeout=10)
+
                 if res.status_code != 200:
                     logger.warning(f"请求失败，状态码: {res.status_code}，2秒后重试...")
                     time.sleep(2)
                     continue
 
-                result = res.json()
+                result = res.json()   # 反序列化的内容
                 if result.get("code") != 0:
                     logger.warning(f"接口返回错误: {result.get('msg')}，2秒后重试...")
                     time.sleep(2)
@@ -167,6 +194,7 @@ class NodePDFToMD(NodeBase):
                 # 提取当前状态
                 data = result.get("data", {})
                 extract_results = data.get("extract_result", [])
+
                 if not extract_results:
                     logger.info("未获取到解析结果列表，等待中...")
                     time.sleep(3)
@@ -207,7 +235,6 @@ class NodePDFToMD(NodeBase):
                 time.sleep(5)
                 continue
             # 注意：不再使用裸 except，让你自己写错的代码或者 failed 的报错能正常抛出来
-            
 
     # 发送请求去下载zip文件
     def load_zip(self,local_dir_obj, pdf_path_obj, url):
@@ -250,24 +277,23 @@ class NodePDFToMD(NodeBase):
         new_file_path_obj = old_file_path_obj.with_name(f"{pdf_path_obj.stem}.md")  # 改名没落盘
         old_file_path_obj.rename(new_file_path_obj)  # 真正的落盘
 
-        print("old_file_path_obj=",old_file_path_obj)
-        print("new_file_path_obj=",new_file_path_obj)
-        print("old_file_path_obj=",old_file_path_obj)
+        # print("old_file_path_obj=",old_file_path_obj)
+        # print("new_file_path_obj=",new_file_path_obj)
+        # print("old_file_path_obj=",old_file_path_obj)
 
         # 这里其实拿这个内容没必要，只是state当中需要这个中间数据，我们只是存一份罢了
         with open(new_file_path_obj, "r", encoding="utf-8") as f:
             md_content = f.read()
-        print(new_file_path_obj)
+        # print(new_file_path_obj)
+
         return md_content, new_file_path_obj
-
-        
-
 
 if __name__ == '__main__':
     node = NodePDFToMD()
 
     init_state = {
-        "pdf_path":r"C:\Users\Administrator\Desktop\test1\hak180产品安全手册.pdf" #上传给mineru解析的文件路径
+        "local_dir":r"C:\Users\Administrator\Desktop\test2",
+        "pdf_path":r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用.pdf" #上传给mineru解析的文件路径
     }
 
     result = node(init_state)

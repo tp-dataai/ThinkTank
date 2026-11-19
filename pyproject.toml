@@ -30,6 +30,7 @@ dependencies = [
     "openai-agents>=0.24.0",
     "dashscope>=2.1.0",
     "uvicorn[standard]>=0.54.0",
+    "pymupdf>=2.1",
 ]
 
 [project.scripts]

@@ -13,6 +13,12 @@ from thinktank.config.config import MilvusConfig
 class NodeImportMilvus(NodeBase):
     """
     将数据向量化后插入到 Milvus 中进行存储。
+    步骤：
+    (1) 得到最终的 Chunk 内容。
+    (2) 创建一个 Mivlus 客户端
+    (3) 创建 collection: -> 创建结构、创建索引、创建collection
+    (4) 幂等性设计，
+    (5) 然后将 Chunk 中的数据插入collection中。
     """
 
     name = "node_import_milvus"
@@ -149,7 +155,7 @@ if __name__ == "__main__":
 
     node = NodeImportMilvus()
 
-    with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\cunks_vector.json","r",encoding="utf-8") as f:
+    with open(r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\final_spilt_list_item_name_cunks_vector.json","r",encoding="utf-8") as f:
         chunks = json.load(f)
 
     init_state = {
@@ -158,4 +164,4 @@ if __name__ == "__main__":
     }
 
     result = node(init_state)
-    print("result=", json_format(result))
+    # print("result=", json_format(result))

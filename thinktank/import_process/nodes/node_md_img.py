@@ -15,12 +15,70 @@ from thinktank.tool.get_minio_client import get_minio_client
 from minio.deleteobjects import DeleteObject
 
 class NodeMDImg(NodeBase):
+    """
+    图片处理节点：完成图片内容的增强
+    核心步骤：
+        (1) 原始数据：从 state 中读取 Markdown 文件路径和内容。
+        (2) 内容增强：扫描 Markdown 中引用的本地图片，得到图片的上下文。
+       
+        (3) 摘要生成：使用多模态大模型（如 qwen3.8-flash 或其他 VL 模型）对图片
+            生成中文摘要。为了避免 API 限流，实现了 "令牌桶算法" 进行速率控制(Rate Limit)。
+
+            在调用第三方视觉大模型或大语言模型 API 时，限流（Rate Limiting）是必须跨越的生死线。
+            云厂商为了保障服务可用性，通常会严格限制客户的RPM（每分钟请求数）和TPM（每分钟 Token 数）。
+            面试讲解：
+               -> 我们需要创建一个队列，并根据厂商的 RPM 去得到这个队列中最大存储数据。
+               -> 循环遍历我们字典列表中的图片数据。
+               -> 开始做判断: 先判断队列是否已满，没满的情况下，我们就直接插入，满的情况下就需要进行下一步判断
+                             当前时间和队列中第一个元素相比较，是否是大于 60秒，如果是，那就将第一个元素踢出去，将
+                             当下的这个时间 装进队列中，开始执行。如果小于 60s，那就需要等待，等待的时间就是和第一个
+                             元素的差值。
+
+                    dq = deque(maxlen=30)
+                        image_with_summary_list = []
+                        for image_with_context in image_with_context_list:
+                            # 2.1、当前时间需要创建（用来进行对比）
+                            # 2.2 也就是当 dq 的数量小于 30 并且 这个时间与 dq 的第一个时间进行对比。
+                            #     如果两个时间差小于 60 ，那就需要等待，等待的时间就是 和60之间相差的秒数
+                            # 如果时间没问题的情况下就将其添加进入队列中。然后进行下一步。
+                            
+                            current_time = time.time()
+                
+                            # 先忙盲清一波
+                            while dq and current_time - dq[0] > 60:
+                                dq.popleft()   # 左侧先弹出
+                
+                            # 先判断dq中的内容是否是大于30。还是满的话就需要继续等待。
+                            
+                            if len(dq) >= 30:
+                                # 那就需要判断还需要等多长时间。
+                                need_wait_time = 60 - (current_time - dq[0])
+                
+                                if need_wait_time > 0:
+                                    time.sleep(need_wait_time)
+                
+                                current_time = time.time()
+                
+                                while dq and current_time - dq[0] > 60:
+                                    dq.popleft()   # 左侧先弹出
+                
+                            dq.append(current_time)
+
+        (4) 图片存储(MinIO):
+            - 清理 MinIO 中对应的旧图片目录。
+            - 将图片批量上传到 MinIO 对象存储。
+        (5) 链接替换：将 Markdown 中的本地图片路径替换为 MinIO 
+            的 HTTP URL,并将生成的图片摘要填入 Markdown 图片的 Alt 文本中。
+            将处理后的内容保存为 _new.md 文件，并更新 state 中的路径。
+
+        重点：实现了 "令牌桶算法" 进行速率控制(Rate Limit)，是怎么实现的？？
+    """
     name = "node_md_img"
     
     def process(self, state):
         
         # 1、获取到初始化的内容，拿到 md 的文件内容。并根据 md 路径找到 图片的目录;
-        image_dir_path_obj,image_names, md_content,md_path_obj = self.get_md_content(state)
+        image_dir_path_obj,image_names, md_content, md_path_obj = self.get_md_content(state)
 
         # 2、根据 md 的文件路径获取 图片的 文件路径。并且，当文件存在的情况下需要将文件的路径存储到一个列表中，
         #    方便后续遍历获取图片内容。不仅仅是文件的名称，还包括路径。
@@ -49,15 +107,15 @@ class NodeMDImg(NodeBase):
             "md_path":str(new_md_path_obj),
             "md_content":md_content
         }
-
+    
     def get_md_content(self, state):
-        # 1.1 、先得到 md 文件路径并完成 防御性判断。
         md_path = state.get("md_path")
+        md_path_obj = Path(md_path)
+
         if not md_path:
             logger.error("文件目录不能为空")
             raise Exception("文件目录不能为空")
 
-        md_path_obj = Path(md_path)
         if not md_path_obj.exists():
             logger.error("文件不存在")
             raise Exception("文件不存在")
@@ -65,23 +123,20 @@ class NodeMDImg(NodeBase):
         with open(md_path_obj, "r", encoding="utf-8") as f:
             md_content = f.read()
 
-        # 1.2 、根据得到的 md 的文档路径到拼接出 图片的目录
+        # 1.2 images 目录不存在（md 直传场景）
         image_dir_path_obj = md_path_obj.parent / "images"
         if not image_dir_path_obj.exists():
-            logger.info("文件目录不存在")
-            return{
-                "md_content": md_content
-            }          
-        
-        # 1.3 、文件目录存在的情况下，我们需要将 文件的名称处理成一个列表，并判断文件目录中是否存在文件
+            logger.info("images 目录不存在（无图片），跳过图片处理")
+            return image_dir_path_obj, [], md_content, md_path_obj   # ✓ 统一 4 元组
+
+        # 1.3 目录存在但为空
         image_names = os.listdir(image_dir_path_obj)
         if not image_names:
-            logger.warning("md中不存在图片内容")
-            return {
-                "md_content":md_content
-            }
+            logger.warning("images 目录为空，跳过图片处理")
+            return image_dir_path_obj, [], md_content, md_path_obj   # ✓ 统一 4 元组
 
         return image_dir_path_obj, image_names, md_content, md_path_obj
+
 
     def get_image_with_context_list(self, image_dir_path_obj, image_names, md_content):
         # 文件不一定都是图片，我们需要先确定 图片类型的数据，其后缀有哪些？
@@ -91,6 +146,7 @@ class NodeMDImg(NodeBase):
         image_with_context_list = []
 
         for image_name in image_names:
+
             # 先判断文件是否是图片
             image_path_obj = image_dir_path_obj / image_name
             suffix = image_path_obj.suffix.lower()
@@ -113,6 +169,8 @@ class NodeMDImg(NodeBase):
             post_text = md_content[end : min(end + 100, len(md_content))]
 
 
+            # 通过一个字典列表的内容进行存储。
+            # 每张图片一字典，里面包含了 图片的名称、路径和上下文的内容。
             image_with_context_list.append({
                 "image_name":image_name,
                 "image_path":str(image_path_obj),
@@ -125,6 +183,8 @@ class NodeMDImg(NodeBase):
     # 我们想要做的事情是将 图片和上下文的内容，都输入给大模型，然后它输出每张图片的摘要内容 
     def get_image_with_summary_list(self, image_with_context_list):
         # 1、初始化一个大模型
+
+        # 这部分内容可以调整，我们已经创建了一个 大模型的初始化工具。
         llm = init_chat_model(
             model=LLMConfig.vl_model,
             model_provider="openai",
@@ -144,7 +204,7 @@ class NodeMDImg(NodeBase):
         for image_with_context in image_with_context_list:
             # 2.1、当前时间需要创建（用来进行对比）
             # 2.2 也就是当 dq 的数量小于 30 并且 这个时间与 dq 的第一个时间进行对比。
-            #   如果两个时间差小于 60 ，那就需要等待，等待的时间就是 和60之间相差的秒数
+            #     如果两个时间差小于 60 ，那就需要等待，等待的时间就是 和60之间相差的秒数
             # 如果时间没问题的情况下就将其添加进入队列中。然后进行下一步。
             
             current_time = time.time()
@@ -155,7 +215,7 @@ class NodeMDImg(NodeBase):
 
             # 先判断dq中的内容是否是大于30。还是满的话就需要继续等待。
             
-            if len(dq) > 30:
+            if len(dq) >= 30:
                 # 那就需要判断还需要等多长时间。
                 need_wait_time = 60 - (current_time - dq[0])
 
@@ -210,11 +270,13 @@ class NodeMDImg(NodeBase):
 
     # 将图片从本地上传到 minio 中存储，并返回 存储的位置等内容
     def get_image_with_summary_url_list(self, image_with_summary_list, md_path_obj):
+        
         # 6.1 创建相关内容
         image_with_summary_url_list = []
 
         upload_dir = f"{MinioConfig.minio_img_dir} / {datetime.now().strftime('%Y%m%d')}/{md_path_obj.stem}"
 
+        print("MinIO中的地址，关注是否存在服务器地址的问题：",upload_dir)
         # 6.2 先删除目录
         # 要删除MinIO中的目录，需要先获取一个客户端
         minio_client = get_minio_client()
@@ -248,7 +310,7 @@ class NodeMDImg(NodeBase):
 
             # 获取到每张图片的url的内容
             url = (f"http://"
-                   f"{MinioConfig.minio_img_dir}"
+                   f"{MinioConfig.minio_endpoint}"
                    f"/{MinioConfig.minio_bucket_name}"
                    f"/{upload_dir}"
                    f"/{image_with_summary.get("image_name")}"
@@ -260,11 +322,12 @@ class NodeMDImg(NodeBase):
                 "url":url
             })
 
+        # 里面是包含了 图片在MinIO中的地址信息。
         return image_with_summary_url_list
     
     def replace_md_content(self, image_with_summary_url_list, md_content, md_path_obj):
 
-        print("图片链接替换的位置存在问题：image_with_summary_url_list = ", image_with_summary_url_list)
+        # print("图片链接替换的位置存在问题：image_with_summary_url_list = ", image_with_summary_url_list)
         # 5.1 先替换内容
         for image_with_summary_url in image_with_summary_url_list:
             pattern = re.compile(r"!\[.*?\]\(.*?" + re.escape(image_with_summary_url["image_name"]) + r"\)")
@@ -284,9 +347,11 @@ class NodeMDImg(NodeBase):
         return new_md_path_obj, md_content
 
 if __name__ == "__main__":
+
     node_md_img = NodeMDImg()
+
     init_state = {
-        # "md_content":md_content,
-        "md_path":r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\万用表RS-12的使用.md"
+        # "md_content":md_content,   # 这个内容在上面重新读取
+        "md_path":r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用\万用表RS-12的使用.md"
     }
     result = node_md_img(init_state)

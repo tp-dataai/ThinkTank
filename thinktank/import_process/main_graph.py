@@ -86,7 +86,7 @@ class MainGraphRunner:
 if __name__ == "__main__":
     # 初始数据
     init_state = {
-        "local_dir":r"C:\Users\Administrator\Desktop\test1",
-        "local_file_path": r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用.pdf"
+        "local_dir":r"C:\Users\Administrator\Desktop\test2",
+        "local_file_path": r"C:\Users\Administrator\Desktop\test2\万用表RS-12的使用.pdf"
     }
     result = MainGraphRunner.create_and_run(init_state)
