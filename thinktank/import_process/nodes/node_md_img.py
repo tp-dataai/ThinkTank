@@ -263,7 +263,8 @@ class NodeMDImg(NodeBase):
         return image_with_summary_url_list
     
     def replace_md_content(self, image_with_summary_url_list, md_content, md_path_obj):
-        
+
+        print("图片链接替换的位置存在问题：image_with_summary_url_list = ", image_with_summary_url_list)
         # 5.1 先替换内容
         for image_with_summary_url in image_with_summary_url_list:
             pattern = re.compile(r"!\[.*?\]\(.*?" + re.escape(image_with_summary_url["image_name"]) + r"\)")

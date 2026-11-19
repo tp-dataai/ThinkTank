@@ -29,6 +29,7 @@ dependencies = [
     "pymilvus[model]>=3.0.2",
     "openai-agents>=0.24.0",
     "dashscope>=2.1.0",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]

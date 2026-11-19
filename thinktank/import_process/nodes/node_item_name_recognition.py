@@ -232,10 +232,10 @@ class NodeItemNameRecognition(NodeBase):
             chunk["item_name"] = item_name
             chunk["file_title_id"]=file_title_id  # 这个id 是根据 file_title 获得的id，主要用于后续的 幂等性删除
         
-        # 再去备份回填完的chunks到json文件
-        with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\final_spilt_list_new.json", "w", encoding="utf-8") as f:
-            # json.dump(chunks, f, ensure_ascii=False, indent=4)
-            f.write(json_format(chunks))    
+        # # 再去备份回填完的chunks到json文件
+        # with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\final_spilt_list_new.json", "w", encoding="utf-8") as f:
+        #     # json.dump(chunks, f, ensure_ascii=False, indent=4)
+        #     f.write(json_format(chunks))    
 
 if __name__ == "__main__":
 

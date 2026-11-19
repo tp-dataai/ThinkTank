@@ -36,8 +36,8 @@ class NodeBGEEmbedding(NodeBase):
                 chunk["dense_vector"] = embedding["dense"][idx]
                 chunk["sparse_vector"] = embedding["sparse"][idx]
 
-        with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\cunks_vector.json","w",encoding="utf-8") as f:
-            json.dump(chunks,f,ensure_ascii=False,indent=4)
+        # with open(r"C:\Users\Administrator\Desktop\test1\万用表RS-12的使用\cunks_vector.json","w",encoding="utf-8") as f:
+        #     json.dump(chunks,f,ensure_ascii=False,indent=4)
 
         return {
             "chunks":chunks,

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <h2>我是一个测试页面</h2>
+    <img src="E:\rag_project\images\image.png" />
+    <button id="btn">按钮</button>
+    <div id="content"></div>
+    <script>
+        // 在网页中“抓住”那个 ID 为 btn 的按钮元素，并把它赋值给 JavaScript 变量 btn。
+        /*  document：代表整个网页文档（你可以把它想象成整个网页的“大管家”）。
+            .getElementById("btn")：管家提供的一个找东西的方法。意思是“根据 ID 去找元素”。
+            它会去网页的 HTML 代码里找 id="btn" 的那个标签。
+            btn =：把找到的这个按钮对象，存到一个名叫 btn 的变量里。
+        */
+        btn = document.getElementById("btn")
+
+        // 给刚刚获取到的那个 btn 按钮，绑定一个“点击事件监听器”。
+        // 当用户点击这个按钮时，就执行这个异步函数里面的逻辑。
+
+        // 外层函数负责去注册这些事件（就像你去餐厅点餐，拿了个传呼机）。
+        // 内层函数是当事件真的发生（传呼机响了）时，才去执行的动作（去前台拿菜）。
+
+        btn.onclick = async function () {
+            /*
+            因为在这个函数内部，使用了 await fetch(...) 去请求后端。
+            网络请求是非常耗时的。如果不加 async 和 await，代码发完请求就会直接往下跑，拿不到真实的数据。
+            加上 async 后，它就能像 Python 协程一样，在等待网络响应时“挂起”自己，把主线程让出来，
+            拿到数据后再继续往下走，绝对不会卡死浏览器页面。
+            */
+
+            // 下面这段代码的作用是：前端使用 POST 请求，向后端的 /send_message 接口发送一段 JSON 格式的数据
+            // （包含 session_id 和 query），并等待（await）后端返回结果。
+            const res = await fetch("http://localhost:8001/send_message", {
+                method:"POST",
+                /*
+                    headers：请求头，用来告诉服务器关于这次请求的一些附加信息。
+                    'Content-Type':'application/json'：这句极其关键。它是在告诉后端：
+                    “我接下来发给你的 body 数据，是严格的 JSON 格式字符串”。
+                    如果后端（比如 FastAPI 的 Pydantic）没有收到这个头，
+                    它就不知道该怎么解析你发过去的数据，直接给你报 422 错误。
+                */
+                headers:{
+                    'Content-Type':'application/json',
+                },
+
+                // 请求体
+                /*
+                    body：请求体。这里存放你要实际发送给服务器的数据（POST 请求的数据都在这里）。
+                    JSON.stringify(...)：核心易错点。它把一个 JavaScript 对象（{...}）强行转换
+                    成一段纯文本的 JSON 字符串（变成 '{"session_id":"yangmi","query":"我爱谁"}'）。
+                    因为网络传输只能传文本，不能直接传对象，所以必须转换。
+                */
+                body:JSON.stringify({
+                    "session_id":"yangmi",
+                    "query":"我爱谁"
+                })
+            })
+            // 把后端返回的“网络响应流”，解析成前端可以直接使用的 JavaScript 对象。
+            /*
+                res.json() 的核心作用就是反序列化。因为网络层只能传输文本，所以无论是前端发请求时的 JSON.stringify()，
+                还是后端返回数据时框架底层的自动转换，都是序列化的过程；而我们前端拿到响应后，
+                通过 .json() 将纯文本解析回 JavaScript 对象，这就是反序列化。
+                只有完成反序列化，前端才能通过 . 语法去访问对象的属性。”
+            */
+            const data = await res.json();
+            console.log(data);
+
+            // 这行代码是前端实现 SSE（Server-Sent Events，服务器发送事件） 的核心起手式。
+            // new EventSource(...)：使用 HTML5 原生的 EventSource 构造函数，实例化一个 SSE 连接对象
+            es = new EventSource("http://localhost:8001/sseanswer/yangmi")
+            
+            // 前端接收 SSE（Server-Sent Events）流式数据的核心处理逻辑
+            /*
+            es：就是上一行代码中 new EventSource(...) 创建的长连接对象。
+            .onmessage：这是 SSE 专用的事件监听器。只要后端通过 yield 往前端推送了一条数据
+                （发送了 data: xxx\n\n），这个回调函数就会被自动触发。
+            event：包含了后端传来的原始信息。
+            */
+            es.onmessage = function(event){
+                if (event.data !== "None"){
+                    /*
+                    document.getElementById("content")：找到网页上那个用来展示内容的 <div id="content"></div> 容器。
+                    .innerHTML += ...：点睛之笔。注意这里是 +=，意思是把新收到的数据追加到原有内容的后面，
+                    而不是直接覆盖。
+                    + "<br>"：加个换行符，让前端看起来是一行一行在显示。
+                    效果：这就是你在网页上看到的类似 ChatGPT 那种“一个字一个字蹦出来”的流式打字机效果。
+                    */
+                    document.getElementById("content").innerHTML += event.data + "<br>"
+                }else{
+                    // 当收到结束信号（"None"）时，主动关闭这个长连接。
+                    es.close();
+                }
+            }
+            
+        }
+    </script>
+</body>
+</html>

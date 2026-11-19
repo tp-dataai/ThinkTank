@@ -1,14 +1,19 @@
+# atguigu/query_process/nodes/node_web_search_mcp.py
+import asyncio
 import json
+import os
+
 from agents import Agent, Runner
 from agents.mcp import MCPServerStreamableHttp
 from agents.model_settings import ModelSettings
-import asyncio
 
+from thinktank.config.config import MCPConfig
 from thinktank.query_process.base import NodeBase
 from thinktank.query_process.state import QueryGraphState
-from thinktank.tool.logger import logger
-from thinktank.config.config import MCPConfig
 from thinktank.tool.json_format import json_format
+from thinktank.tool.logger import logger
+
+
 
 class NodeWebSearchMcp(NodeBase):
     """
@@ -19,18 +24,9 @@ class NodeWebSearchMcp(NodeBase):
     name: str = "node_web_search_mcp"
 
     def process(self, state: QueryGraphState):
-        """
-        节点逻辑
-        :param state: 工作流状态对象
-        :return: 更新后的状态对象
-        """
-
-        # 先获取 大模型 重写后的问题。
         rewritten_query = state.get("rewritten_query")
         result = asyncio.run(self.run_mcp(rewritten_query))
-
-        assert result is not None, "MCP 服务返回了 None"
-
+        # print("MCP 的到的结果result = ",json_format(json.loads(result.content[0].text).get("pages")))
         data = json.loads(result.content[0].text).get("pages")
         chunks = [
             {
@@ -41,20 +37,19 @@ class NodeWebSearchMcp(NodeBase):
             }
             for item in data
         ]
-
-
         return {
-            "web_search_doce":chunks
+            "web_search_docs":chunks
         }
+
 
     async def run_mcp(self,query,limit=10) -> None:
         token = MCPConfig.mcp_dashscope_api_key
         async with MCPServerStreamableHttp(
                 name="网络搜索chunks的mcp工具",
                 params={
-                    "url": str(MCPConfig.mcp_dashscope_base_url),
+                    "url": MCPConfig.mcp_dashscope_base_url,
                     "headers": {"Authorization": f"Bearer {token}"},
-                    "timeout": 10,
+                    "timeout": 20,
                 },
                 cache_tools_list=True,
                 max_retry_attempts=3,
@@ -66,15 +61,16 @@ class NodeWebSearchMcp(NodeBase):
                     "count":limit
                 }
             )
-            return result # type: ignore
+            return result
 
 if __name__ == "__main__":
 
     init_state = {
-        "rewritten_query": "关于BrotherHAK180烫金机如何使用"
+        "rewritten_query": "关于RSPRORS-12数字万用表如何使用"
     }
 
     # 执行节点的业务调用
     node_web_search_mcp = NodeWebSearchMcp()
-    result = node_web_search_mcp(init_state)  # type:ignore
+    result = node_web_search_mcp(init_state)
     logger.info(json_format(result))
+
