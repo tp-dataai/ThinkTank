@@ -12,10 +12,16 @@ from thinktank.tool.task_utils import put_data
 class NodeAnswerOutput(NodeBase):
     """
     节点功能: 答案生成（支持流式输出与降级短路）
+    具体的步骤：
+    (1) 获取需要传输给大模型的所有数据。问题、检索到的相关chunks、MongoDB中的历史数据、url。
+    (2) 将这些数据提供给大模型进行流式输出，输出结束后，根据输出的内容中的连接提取图片的内容。
+    (3) 将输出的内容存储到MongoDB中。
     """
     name: str = "node_answer_output"
 
     def process(self, state: QueryGraphState):
+
+        # 获取之前的数据
         answer = state.get("answer")
         task_id = state.get("task_id")
         reranked_docs = state.get("reranked_docs") or [] # 防 None
@@ -94,6 +100,7 @@ class NodeAnswerOutput(NodeBase):
 
             # 💡 修复 2：发送 final 时，必须把完整的 answer 和图片一起发给前端！
             put_data(task_id=task_id, event="final", data={"answer": answer, "image_urls": image_list})
+
 
         # 💡 修复 3：把保存历史记录移到最外层，保证无论走哪个分支都能保存
         if answer:

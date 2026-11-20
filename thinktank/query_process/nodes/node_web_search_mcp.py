@@ -18,15 +18,21 @@ from thinktank.tool.logger import logger
 class NodeWebSearchMcp(NodeBase):
     """
     节点功能，调用外部搜索引擎补充信息
+    步骤：
+    (1) 定义一个mcp异步函数。
+    (2) 调用这个异步函数，并返回结果。
     """
 
     # 覆盖基类的 name 属性，标识节点名称
     name: str = "node_web_search_mcp"
 
     def process(self, state: QueryGraphState):
+
         rewritten_query = state.get("rewritten_query")
         result = asyncio.run(self.run_mcp(rewritten_query))
+        
         # print("MCP 的到的结果result = ",json_format(json.loads(result.content[0].text).get("pages")))
+        
         data = json.loads(result.content[0].text).get("pages")
         chunks = [
             {
@@ -41,8 +47,9 @@ class NodeWebSearchMcp(NodeBase):
             "web_search_docs":chunks
         }
 
-
-    async def run_mcp(self,query,limit=10) -> None:
+    # 创建一个异步的MCP服务
+    async def run_mcp(self, query, limit=10) -> None:
+        
         token = MCPConfig.mcp_dashscope_api_key
         async with MCPServerStreamableHttp(
                 name="网络搜索chunks的mcp工具",
@@ -66,7 +73,7 @@ class NodeWebSearchMcp(NodeBase):
 if __name__ == "__main__":
 
     init_state = {
-        "rewritten_query": "关于RSPRORS-12数字万用表如何使用"
+        "rewritten_query": "小学生每天合适的睡眠时长是多少？"
     }
 
     # 执行节点的业务调用

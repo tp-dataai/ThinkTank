@@ -85,10 +85,12 @@ class NodeSearchEmbeddingHyde(NodeBase):
         }
 
 if __name__ == "__main__":
+
     init_state = {
-        "rewritten_query": "关于RSPRORS-12数字万用表如何使用",
-        "item_names": ["RSPRORS-12数字万用表"]
+        "rewritten_query": "小学生每天合适的睡眠时长是多少？",
+        "item_names": ["不同年龄段睡眠与屏幕时间参考","孩子入睡困难与作息混乱怎么调整","儿童性格心理学"]
     }
+    
     node_search_embedding_hyde = NodeSearchEmbeddingHyde()
     result = node_search_embedding_hyde(init_state)  # type:ignore
     logger.info(json_format(result))

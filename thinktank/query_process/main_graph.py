@@ -58,8 +58,10 @@ class QueryMainGraphRunner:
 
 if __name__ == '__main__':
     runner = QueryMainGraphRunner()
+
     init_state = {
-        # "answer": "haha",
+        "original_query": "小学生每天合适的睡眠时长是多少？",
+        "session_id":"0001"
     }
     result = runner.run(init_state)
     logger.info(json_format(result))

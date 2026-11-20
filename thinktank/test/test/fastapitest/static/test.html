@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <h2>我爱你赵丽颖</h2>
+    <p>赵丽颖真美</p>
+    <p>赵丽颖真漂亮</p>
+
+    <button id="btn">点我发请求</button>
+
+    <script>
+        //写js的地方
+        //前端js很大一部分玩的都是事件，事件分为三要素：事件源 事件类型 回调函数
+        //获取到按钮事件源
+        const btn = document.getElementById("btn")
+        // let btn = 10
+        //给事件源添加事件监听，事件类型的选择
+        btn.onclick = async function (){
+            //回调函数（当点击事件发生的时候，回调函数就会自动调用，不是我们调的，是；浏览器内核调的）
+            //发请求
+            const res = await fetch("http://localhost:8000/getdata")
+            //res是响应
+            //我们要的是数据
+            const data = await res.json() //拿到反序列化完的数据，就是你接口return的字典
+
+            console.log(data)
+
+        }
+
+
+
+
+
+
+
+
+
+    </script>
+
+
+</body>
+</html>

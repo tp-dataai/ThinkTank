@@ -92,14 +92,11 @@ def update_history_item_names(ids,item_names,rewritten_query):
 
 if __name__ == '__main__':
     session_id = "test_001"
-    # get_recent_message(session_id,10)
+    get_recent_message(session_id,10)
 
     # 用于验证数据是否能正常插入
-    save_chat_message(session_id, "user", "咨询下烫金机。") 
-    save_chat_message(session_id, "assistant", "您好。请问是哪个型号")
-    save_chat_message(session_id, "user", "hak180")
-    save_chat_message(session_id, "assistant", "具体有什么问题呢？")
-
-    # save_chat_message(session_id, "user", "哈哈哈哈哈",message_id=ObjectId('6af4417adc5a908b7130dc18'))
-
-    # clear_history(session_id)
+    save_chat_message(session_id, "user", "咨询儿童教育问题")
+    save_chat_message(session_id, "assistant", "叛逆期应该怎么处理？")
+    save_chat_message(session_id, "user", "如何和他沟通？")
+    save_chat_message(session_id, "assistant", "应该怎么办？")
+    print("内容全部插入 MongoDB中")

@@ -68,11 +68,10 @@ def hybrid_search(collection_name,reqs,output_fields,limit=10,ranker=(0.5, 0.5))
 
     res = milvus_client.hybrid_search(
         collection_name=collection_name, # 差的是哪个表？
-        reqs=reqs,   # 上一步拿到的稀疏向量和稠密向量的列表
+        reqs=reqs,       # 上一步拿到的稀疏向量和稠密向量的列表
         ranker=weighted_ranker,  # 排序器
-        limit=limit,    # top-k
+        limit=limit,     # top-k
         output_fields=output_fields,
-
     )
 
     return res

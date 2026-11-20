@@ -18,7 +18,15 @@ from thinktank.tool.mongo_tool import save_chat_message, get_recent_message, upd
 
 class NodeItemNameConfirm(NodeBase):
     """
-    节点功能：确认用户问题中的核心商品名称。
+    智能路由节点功能：确认用户问题中的核心商品名称，意图识别和智能分发
+    详细步骤如下：
+    (1) 获取数据: 根据输入的问题和会话id，找到这个会话相关的所有历史记录。
+    (2) 查询改写：根据历史内容提供给大模型，让大模型识别出具体的商品名称(用于过滤数据)和查询改写(改写问题)。
+    (3) 混合检索：存在商品名称的情况下得到，我们就需要基于商品名称去完成 混合向量检索(主体识别出来的结果)。
+    (4) 命名对齐：得到的商品名称是多个，我们需要根据分数去进行命名对齐。-> 手工调出来的结果。
+                --> 面试重点在这个地方，怎么做的命名对齐。
+                --> 还需要根据分数直接返回相关数据。
+    (5) 数据归档: 将返回的数据内容，直接保存到 MongoDB 中进行存储。
     """
 
     # 覆盖基类的 name 属性，标识节点名称
@@ -26,21 +34,28 @@ class NodeItemNameConfirm(NodeBase):
 
     def process(self, state: QueryGraphState):
 
-        #todo 一、获取原始问题和session_id，根据session_id得到历史记录列表，把历史记录列表转化为大串
-        history_list_str, original_query, session_id,message_id = self.get_history_str(state)
-        #todo 二、根据历史记录大串和原始问题让llm识别商品名字得到识别的商品名字
+        # 1、获取 原始问题 和 session_id，根据session_id得到历史记录列表，把历史记录列表转化为大串
+        # session_id 是会话ID，这样我们才能找到对应会话的历史记录
+        history_list_str, original_query, session_id, message_id = self.get_history_str(state)
+
+        # 2、根据历史记录大串和原始问题让 llm 识别商品名字得到识别的商品名字
         item_names, rewritten_query = self.get_recognition_item_names(history_list_str, original_query)
 
         final_item_names = []
         answer = "不好意思，没有识别到您问的商品，请重新提问"
         #下面就是要根据识别的名称 和 milvus存储的名称进行混合检索相似度，在这必须要封装milvus混合检索工具
         if item_names:
-            #todo 三、如果有识别的商品名字再去做混合检索（最终拿到milvus表当中的名字）和名称对齐
+            # 3、如果有识别的商品名字再去做混合检索（最终拿到milvus表当中的名字）和名称对齐
             search_item_names = self.hybrid_search_item_names(item_names)
-            #todo 四、检索到的milvus表当中的所有名字进行名称对齐
+
+            # print("05 混合向量检索出来的结果是：",json_format(search_item_names))
+
+            # 4、检索到的 milvus 表当中的所有名字进行名称对齐
+            # 你在上一步检索出来对应的商品名称的，但是这只是一个分数，不代表一定相关，所以就需要进行命名对齐
+            # 根据分数的高低去对找出来的商品名称进行归类
             answer, final_item_names = self.aligin_item_names(answer, final_item_names, search_item_names)
 
-        #todo 五、善后处理，把新加的历史记录添加好，把所有参与这次识别的历史记录和新记录全部回填最终的item_names和重写的问题
+        # 5、善后处理，把新加的历史记录添加好，把所有参与这次识别的历史记录和新记录全部回填最终的item_names和重写的问题
         message_id = self.handler_history(answer, final_item_names, rewritten_query, session_id,message_id)
 
         return {
@@ -64,14 +79,17 @@ class NodeItemNameConfirm(NodeBase):
         if ids:
             update_history_item_names(ids, item_names=final_item_names, rewritten_query=rewritten_query)
         return message_id
+    
     def aligin_item_names(self, answer: str, final_item_names, search_item_names):
         # 开始名称对齐
-        confirm_item_names = [item.get("search_item_name") for item in search_item_names if item.get("score") >= 0.8]
+
+        confirm_item_names = [item.get("search_item_name") for item in search_item_names if item.get("score") >= 0.7]
         option_item_names = [
             item.get("search_item_name")
             for item in search_item_names
-            if item.get("score") < 0.8 and item.get("score") >= 0.6
+            if item.get("score") < 0.7 and item.get("score") >= 0.4
         ]
+
         # 如果确认有用户问的名字，那么没有答案
         if confirm_item_names:
             answer = ""
@@ -82,6 +100,8 @@ class NodeItemNameConfirm(NodeBase):
         else:
             final_item_names = []
             answer = "不好意思，没有识别到您问的商品，请重新提问"
+
+        # print(f"06 名称对齐后的结果是：answer={answer}, final_item_names= {final_item_names}")
         return answer, final_item_names
 
     def hybrid_search_item_names(self, item_names):
@@ -140,19 +160,25 @@ class NodeItemNameConfirm(NodeBase):
         # 防止大模型把json理解为json的代码块
         res_json = res_json.replace("```json", "").replace("```", "")
         res_data = json.loads(res_json)
-        item_names = res_data.get("item_names", [])
+
+        # print("res_data.get(item_names) = ",  res_data.get("item_names"))
+              
+        item_names = res_data.get("item_names",[])
         # 防止名称当中出现空格
         item_names = [
             item.replace("\n", "").replace("\t", "").replace(" ", "")
             for item in item_names
         ]
         rewritten_query = res_data.get("rewritten_query", original_query)
-        print(item_names)
+        # print("02 LLM识别出来的主体名称为：",item_names)
+        # print("03 LLM 改写后的问题是：", rewritten_query)
         return item_names, rewritten_query
 
     def get_history_str(self, state: QueryGraphState):
+        # 输入问题和会话id
         original_query = state.get("original_query")
         session_id = state.get("session_id")
+
         if not original_query:
             logger.error("原始问题不能为空")
             raise Exception("原始问题不能为空")
@@ -162,6 +188,8 @@ class NodeItemNameConfirm(NodeBase):
 
         # 现在这个问题，就得变成一个记录，那么我们先去获取历史记录，然后再把当前问题保存历史记录
         history_list = get_recent_message(session_id)
+
+        # print("01 问题保存到历史记录中")
         message_id = save_chat_message(session_id, role="user", text=original_query)
 
         # 把历史记录字典列表变成一个大串
@@ -169,27 +197,29 @@ class NodeItemNameConfirm(NodeBase):
         for history_item in history_list:
             history_str = f"{history_item.get("role")}:{history_item.get("text")}\n\n"
             history_list_str += history_str
+
         return history_list_str, original_query, session_id, message_id
 
 
 if __name__ == "__main__":
 
     # 模拟会话历史
-    # session_id = "test_001"
-    # save_chat_message(session_id, "user", "咨询下万用表。")
-    # save_chat_message(session_id, "assistant", "您好。请问是哪个型号")
-    # save_chat_message(session_id, "user", "RS-12")
-    # save_chat_message(session_id, "assistant", "具体有什么问题呢？")
+    session_id = "test_001"
+    # save_chat_message(session_id, "user", "咨询儿童教育问题")
+    # save_chat_message(session_id, "assistant", "叛逆期应该怎么处理？")
+    # save_chat_message(session_id, "user", "如何和他沟通？")
+    # save_chat_message(session_id, "assistant", "应该怎么办？")
 
     # 初始化图状态
     init_state = {
         "session_id": "test_001",
-        "original_query": "咋用？"
+        "original_query": "小学生的睡觉时长应该是多少？"
     }
 
-    # # 创建节点对象
-    # node_item_name_confirm = NodeItemNameConfirm()
-    # # 执行节点的单元测试
-    # result = node_item_name_confirm(init_state)
-    # # 将返回的图状态进行json序列化
-    # logger.info(json_format(result))
+    # 创建节点对象
+    node_item_name_confirm = NodeItemNameConfirm()
+    # 执行节点的单元测试
+    result = node_item_name_confirm(init_state)
+
+    # 将返回的图状态进行json序列化
+    logger.info(json_format(result))

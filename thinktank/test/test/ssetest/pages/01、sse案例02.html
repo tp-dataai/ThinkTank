@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <h2>sse02</h2>
+
+    请输入自己的会话id:<input type="text" id="sessionId"> <br>
+    请输入自己的问题：<input type="text" id="query"> <br>
+    <button id="btn">点我发请求</button> <br>
+    <div id="content">
+
+    </div>
+
+
+
+    <script>
+        const btn = document.getElementById("btn")
+        btn.onclick = async function (){
+            //todo 第一大步：普通请求让后端接口开始造数据
+            const session_id = document.getElementById("sessionId").value
+            const query = document.getElementById("query").value
+
+            const res = await fetch("http://localhost:8000/startwork",{
+                method:"POST",
+                headers:{
+                    //键里面如果没有特殊字符可以省略，如果有特殊字符不能省略
+                    // 数字 字母 下划线和$组成   不能以数字开头 不能和关键字保留字同名
+                    "content-type":"application/json"
+                },
+                body:JSON.stringify({
+                    session_id,
+                    query
+                })
+            })
+            const data = await res.json()
+            console.log(data)
+
+            //todo 第三大步 订阅sse
+            const es = new EventSource(`http://localhost:8000/sse02?session_id=${session_id}` )
+            es.onmessage = function (e){
+                if(e.data === "None"){
+                    es.close()
+                }else{
+                    const divNode = document.getElementById("content")
+                    divNode.innerHTML += e.data + "<br>"
+                }
+            }
+
+
+        }
+
+
+
+
+
+    </script>
+</body>
+</html>
