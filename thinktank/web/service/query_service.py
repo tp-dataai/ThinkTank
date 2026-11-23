@@ -22,10 +22,10 @@ app = FastAPI(
 # 2. 跨域
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许的源
+    allow_origins=["*"],     # 允许的源
     allow_credentials=True,  # 允许携带cookie
-    allow_methods=["*"],  # 允许的请求方法
-    allow_headers=["*"],  # 允许的请求头
+    allow_methods=["*"],     # 允许的请求方法
+    allow_headers=["*"],     # 允许的请求头
 )
 
 
@@ -35,12 +35,11 @@ def health():
     return {"msg": "ok"}
 
 
-# todo 2 书写清空历史记录的接口
+# 2 书写清空历史记录的接口
 @app.delete("/history/{session_id}")
 def remove_history(session_id: str = Path(...,description="用户会话id")):
     clear_history(session_id=session_id)
     return {"msg": "ok"}
-
 
 
 #todo 3 书写获取历史记录的接口
@@ -128,10 +127,9 @@ def query(
 
     return {"task_id":task_id}
 
-
-
-# todo sse推送接口
+#  sse推送接口
 def generate_data(task_id):
+
     while task_id not in q_dict:
         time.sleep(1)
 
@@ -140,10 +138,12 @@ def generate_data(task_id):
         event_type = data.get('event')
 
         yield f"event: {data.get('event')}\n"
-        yield f"data: {json.dumps(data.get('data'))}\n\n" #传数据的时候不能直接把字典往过推，必须把字典变成json字符串
+        # 传数据的时候不能直接把字典往过推，必须把字典变成json字符串
+        yield f"data: {json.dumps(data.get('data'))}\n\n" 
         # 💡 核心修改：遇到 final 或 error 必须跳出循环，结束 SSE 响应！
         if event_type in ["final", "error"]:
             break
+
 @app.get("/stream/{task_id}")
 def stream(task_id: str = Path(...,description="任务id")):
     return StreamingResponse(generate_data(task_id), media_type="text/event-stream")

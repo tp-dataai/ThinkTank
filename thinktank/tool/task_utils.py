@@ -153,7 +153,9 @@ def get_task_info(task_id: str):
 
 
 from queue import Queue
+
 q_dict = {} #存储不同任务的队列
+
 #专门用来获取队列
 def get_q(task_id):
     if task_id not in q_dict:
